@@ -1,0 +1,40 @@
+# Splunk searches used in this project
+# Adjust host= / index= to match your setup.
+
+# 1. Everything from the web server
+host=server
+
+# 2. All login activity (successful or not)
+sourcetype=access_combined "wp-login.php"
+
+# 3. Failed-login style activity: POSTs to wp-login.php per source IP
+host=server "POST /wordpress/wp-login.php"
+| stats count by clientip
+| sort - count
+
+# 4. WPScan detection
+sourcetype=access_combined "WPScan"
+| stats count by clientip, useragent
+
+# 5. SQLMap detection
+sourcetype=access_combined "sqlmap"
+| stats count by clientip, useragent
+
+# 6. Known scanner user-agents (one search for all tools)
+sourcetype=access_combined (useragent="*WPScan*" OR useragent="*sqlmap*" OR useragent="*nikto*" OR useragent="*curl*")
+| stats count by clientip, useragent
+
+# 7. 4xx spikes per source IP (scan / brute-force indicator)
+sourcetype=access_combined status>=400 status<500
+| stats count by clientip, status
+| sort - count
+
+# 8. Requests per minute per IP (flood / scan indicator)
+sourcetype=access_combined
+| bin _time span=1m
+| stats count by _time, clientip
+| where count > 50
+
+# 9. Suspicious SQL patterns in the URI
+sourcetype=access_combined (uri="*ORDER*BY*" OR uri="*UNION*" OR uri="*%27*" OR uri="*SLEEP*")
+| table _time, clientip, uri, status
